@@ -1,0 +1,248 @@
+
+{
+  "level": "Log",
+  "message": "db-connection 127.0.0.1:5432/colossa_pm",
+  "requestMethod": "-",
+  "timestamp": "05:05:29"
+}
+{
+  "level": "Endpoint Log",
+  "ip": "::1",
+  "clientAgent": "Apidog/1.0.0 (https://apidog.com)",
+  "requestMethod": "POST",
+  "url": "/api/v1/auth/login",
+  "status": 200,
+  "length": "732 bytes",
+  "duration": "86 ms",
+  "timestamp": "05:05:55"
+}
+{
+  "level": "Log",
+  "message": "db-connection 127.0.0.1:5432/colossa_pm",
+  "requestMethod": "-",
+  "timestamp": "05:08:21"
+}
+{
+  "level": "Endpoint Log",
+  "ip": "::1",
+  "clientAgent": "Apidog/1.0.0 (https://apidog.com)",
+  "requestMethod": "POST",
+  "url": "/api/v1/auth/login",
+  "status": 200,
+  "length": "816 bytes",
+  "duration": "76 ms",
+  "timestamp": "05:08:48"
+}
+{
+  "level": "Endpoint Log",
+  "ip": "::1",
+  "clientAgent": "Apidog/1.0.0 (https://apidog.com)",
+  "requestMethod": "POST",
+  "url": "/api/v1/auth/register",
+  "status": 201,
+  "length": "827 bytes",
+  "duration": "78 ms",
+  "timestamp": "05:10:31"
+}
+{
+  "level": "Endpoint Log",
+  "ip": "::1",
+  "clientAgent": "Apidog/1.0.0 (https://apidog.com)",
+  "requestMethod": "POST",
+  "url": "/api/v1/auth/register",
+  "status": 409,
+  "length": "32 bytes",
+  "duration": "76 ms",
+  "timestamp": "05:11:50"
+}
+{
+  "level": "Endpoint Log",
+  "ip": "::1",
+  "clientAgent": "Apidog/1.0.0 (https://apidog.com)",
+  "requestMethod": "POST",
+  "url": "/api/v1/auth/refresh",
+  "status": 400,
+  "length": "115 bytes",
+  "duration": "0 ms",
+  "timestamp": "05:16:09"
+}
+{
+  "level": "Endpoint Log",
+  "ip": "::1",
+  "clientAgent": "Apidog/1.0.0 (https://apidog.com)",
+  "requestMethod": "POST",
+  "url": "/api/v1/auth/refresh",
+  "status": 200,
+  "length": "477 bytes",
+  "duration": "2 ms",
+  "timestamp": "05:16:45"
+}
+{
+  "level": "Endpoint Log",
+  "ip": "::1",
+  "clientAgent": "Apidog/1.0.0 (https://apidog.com)",
+  "requestMethod": "POST",
+  "url": "/api/v1/auth/refresh",
+  "status": 401,
+  "length": "36 bytes",
+  "duration": "0 ms",
+  "timestamp": "05:16:51"
+}
+{
+  "level": "Endpoint Log",
+  "ip": "::1",
+  "clientAgent": "Apidog/1.0.0 (https://apidog.com)",
+  "requestMethod": "POST",
+  "url": "/api/v1/auth/refresh",
+  "status": 200,
+  "length": "477 bytes",
+  "duration": "0 ms",
+  "timestamp": "05:16:55"
+}
+{
+  "level": "Endpoint Log",
+  "ip": "::1",
+  "clientAgent": "Apidog/1.0.0 (https://apidog.com)",
+  "requestMethod": "POST",
+  "url": "/api/v1/auth/register",
+  "status": 201,
+  "length": "827 bytes",
+  "duration": "67 ms",
+  "timestamp": "05:18:06"
+}
+{
+  "level": "Log",
+  "message": "db-connection 127.0.0.1:5432/colossa_pm",
+  "requestMethod": "-",
+  "timestamp": "05:21:34"
+}
+{
+  "level": "Log",
+  "message": "db-connection 127.0.0.1:5432/colossa_pm",
+  "requestMethod": "-",
+  "timestamp": "05:33:42"
+}
+{
+  "level": "Endpoint Log",
+  "ip": "::1",
+  "clientAgent": "Apidog/1.0.0 (https://apidog.com)",
+  "requestMethod": "POST",
+  "url": "/api/v1/auth/refresh",
+  "status": 200,
+  "length": "488 bytes",
+  "duration": "6 ms",
+  "timestamp": "05:33:50"
+}
+{
+  "level": "Endpoint Log",
+  "ip": "::1",
+  "clientAgent": "Apidog/1.0.0 (https://apidog.com)",
+  "requestMethod": "POST",
+  "url": "/api/v1/auth/login",
+  "status": 200,
+  "length": "816 bytes",
+  "duration": "72 ms",
+  "timestamp": "05:33:55"
+}
+{
+  "level": "Endpoint Log",
+  "ip": "::1",
+  "clientAgent": "Apidog/1.0.0 (https://apidog.com)",
+  "requestMethod": "POST",
+  "url": "/api/v1/auth/login",
+  "status": 200,
+  "length": "816 bytes",
+  "duration": "75 ms",
+  "timestamp": "05:33:59"
+}
+{
+  "level": "Endpoint Log",
+  "ip": "::1",
+  "clientAgent": "Apidog/1.0.0 (https://apidog.com)",
+  "requestMethod": "POST",
+  "url": "/api/v1/auth/login",
+  "status": 200,
+  "length": "816 bytes",
+  "duration": "73 ms",
+  "timestamp": "05:34:00"
+}
+{
+  "level": "Endpoint Log",
+  "ip": "::1",
+  "clientAgent": "Apidog/1.0.0 (https://apidog.com)",
+  "requestMethod": "POST",
+  "url": "/api/v1/auth/login",
+  "status": 200,
+  "length": "816 bytes",
+  "duration": "67 ms",
+  "timestamp": "05:34:03"
+}
+{
+  "level": "Log",
+  "message": "db-connection 127.0.0.1:5432/colossa_pm",
+  "requestMethod": "-",
+  "timestamp": "05:35:08"
+}
+{
+  "level": "Log",
+  "message": "db-connection 127.0.0.1:5432/colossa_pm",
+  "requestMethod": "-",
+  "timestamp": "05:35:21"
+}
+{
+  "level": "Log",
+  "message": "db-connection 127.0.0.1:5432/colossa_pm",
+  "requestMethod": "-",
+  "timestamp": "05:36:02"
+}
+{
+  "level": "Endpoint Log",
+  "ip": "::1",
+  "clientAgent": "Apidog/1.0.0 (https://apidog.com)",
+  "requestMethod": "POST",
+  "url": "/api/v1/auth/login",
+  "status": 200,
+  "length": "830 bytes",
+  "duration": "81 ms",
+  "timestamp": "05:36:24"
+}
+{
+  "level": "Log",
+  "message": "db-connection 127.0.0.1:5432/colossa_pm",
+  "requestMethod": "-",
+  "timestamp": "05:39:12"
+}
+{
+  "level": "Endpoint Log",
+  "ip": "::1",
+  "clientAgent": "Apidog/1.0.0 (https://apidog.com)",
+  "requestMethod": "POST",
+  "url": "/api/v1/auth/register",
+  "status": 201,
+  "length": "837 bytes",
+  "duration": "79 ms",
+  "timestamp": "05:39:26"
+}
+{
+  "level": "Log",
+  "message": "db-connection 127.0.0.1:5432/colossa_pm",
+  "requestMethod": "-",
+  "timestamp": "05:42:45"
+}
+{
+  "level": "Endpoint Log",
+  "ip": "::1",
+  "clientAgent": "Apidog/1.0.0 (https://apidog.com)",
+  "requestMethod": "POST",
+  "url": "/api/v1/auth/register",
+  "status": 201,
+  "length": "847 bytes",
+  "duration": "76 ms",
+  "timestamp": "05:42:57"
+}
+{
+  "level": "Log",
+  "message": "db-connection 127.0.0.1:5432/colossa_pm",
+  "requestMethod": "-",
+  "timestamp": "05:43:28"
+}

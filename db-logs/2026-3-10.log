@@ -1,0 +1,13 @@
+00:41:48 [ERROR] failed to initialize database, got error failed to connect to `user=password= database=sslmode=require`:
+	hostname resolving error: lookup port=: no such host
+	lookup port=: no such host
+00:43:18 [ERROR] failed to initialize database, got error failed to connect to `user=password= database=sslmode=require`:
+	hostname resolving error: lookup port=: no such host
+	lookup port=: no such host
+00:45:00 [ERROR] failed to initialize database, got error failed to connect to `user=password= database=sslmode=require`:
+	hostname resolving error: lookup port=: no such host
+	lookup port=: no such host
+00:52:19 [ERROR] failed to initialize database, got error failed to connect to `user= database=`: /private/tmp/.s.PGSQL.5432 (/private/tmp): server error: FATAL: no PostgreSQL user name specified in startup packet (SQLSTATE 28000)
+00:58:45 [ERROR] failed to initialize database, got error failed to connect to `user=replica_user database=replica_db_name`: 127.0.0.1:5433 (127.0.0.1): dial error: dial tcp 127.0.0.1:5433: connect: connection refused
+00:59:24 [ERROR] failed to initialize database, got error failed to connect to `user=janvier database=colossa_pm`: 127.0.0.1:5432 (127.0.0.1): tls error: server refused TLS connection
+00:59:45 [ERROR] failed to initialize database, got error failed to connect to `user=janvier database=colossa_pm`: 127.0.0.1:5432 (127.0.0.1): tls error: server refused TLS connection

@@ -1,0 +1,29 @@
+
+{
+  "level": "Log",
+  "message": "db-connection 127.0.0.1:5432/colossa_pm and 127.0.0.1:5433/replica_db_name",
+  "requestMethod": "-",
+  "timestamp": "01:00:48"
+}
+{
+  "level": "Endpoint Log",
+  "ip": "::1",
+  "clientAgent": "Apidog/1.0.0 (https://apidog.com)",
+  "requestMethod": "GET",
+  "url": "/_health",
+  "status": 200,
+  "length": "50 bytes",
+  "duration": "0 ms",
+  "timestamp": "01:04:03"
+}
+{
+  "level": "Endpoint Log",
+  "ip": "::1",
+  "clientAgent": "Apidog/1.0.0 (https://apidog.com)",
+  "requestMethod": "GET",
+  "url": "/_health",
+  "status": 200,
+  "length": "50 bytes",
+  "duration": "0 ms",
+  "timestamp": "01:04:05"
+}
