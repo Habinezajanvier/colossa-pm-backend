@@ -1,6 +1,9 @@
+include .env
+export
+
 MIGRATE_CMD = go run ./cmd/migrate
 
-.PHONY: migrate-up migrate-down migrate-steps migrate-version migrate-force migrate-create
+.PHONY: migrate-up migrate-down migrate-steps migrate-version migrate-force migrate-create dev build run clean test fmt
 
 ## Run all pending migrations
 migrate-up:
@@ -31,3 +34,21 @@ migrate-create:
 	touch migrations/sql/$(PADDED)_$(name).down.sql
 	@echo "created migrations/sql/$(PADDED)_$(name).up.sql"
 	@echo "created migrations/sql/$(PADDED)_$(name).down.sql"
+
+dev:
+	CompileDaemon -build="go build -o $(BIN_DIR)/$(APP_NAME) $(CMD_DIR)" -command="./$(BIN_DIR)/$(APP_NAME)" -exclude-dir=.git -exclude-dir=$(BIN_DIR)
+
+build:
+	go build -o $(BIN_DIR)/$(APP_NAME) $(CMD_DIR)
+
+run: build
+	./$(BIN_DIR)/$(APP_NAME)
+
+test:
+	go test ./...
+
+fmt:
+	go fmt ./...
+
+clean:
+	rm -rf $(BIN_DIR)

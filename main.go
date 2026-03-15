@@ -43,7 +43,7 @@ func main() {
 	route.Use(cors.Default())
 
 	initlizeApp(route)
-	defer dbConn.DisconnectDb()
+	// defer dbConn.DisconnectDb()
 
 	route.GET("/_health", func(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, gin.H{
