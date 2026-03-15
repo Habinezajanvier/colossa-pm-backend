@@ -146,5 +146,6 @@ func (d *DbConnection) DisconnectDb() error {
 		return err
 	}
 
+	log.Log("Database disconnected successfully")
 	return nil
 }
