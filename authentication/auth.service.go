@@ -2,11 +2,15 @@ package authentication
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
+	"colossa-pm/email"
 	"colossa-pm/helpers"
+	"colossa-pm/logger"
+	"colossa-pm/messaging"
 	"colossa-pm/models"
 )
 
@@ -40,22 +44,84 @@ type AuthResponse struct {
 	Tokens *helpers.TokenPair `json:"tokens"`
 }
 
+type RegisterResponse struct {
+	UserID  string `json:"userId"`
+	Message string `json:"message"`
+}
+
+type VerifyEmailInput struct {
+	UserID string `json:"-"`
+	OTP    string `json:"otp" binding:"required,len=6"`
+}
+
+type RequestChangePasswordInput struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+type ConfirmChangePasswordInput struct {
+	UserID      string `json:"userId"          binding:"required"`
+	OTP         string `json:"otp"             binding:"required,len=6"`
+	NewPassword string `json:"newPassword"     binding:"required,min=8"`
+}
+
 type Service interface {
-	Register(input RegisterInput) (*AuthResponse, error)
+	Register(input RegisterInput) (*RegisterResponse, error)
+	VerifyEmail(input VerifyEmailInput) (*AuthResponse, error)
 	Login(input LoginInput) (*AuthResponse, error)
 	RefreshTokens(input RefreshInput) (*helpers.TokenPair, error)
-	ChangePassword(userID uuid.UUID, input ChangePasswordInput) error
+	RequestChangePassword(input RequestChangePasswordInput) error
+	ConfirmChangePassword(input ConfirmChangePasswordInput) error
 }
 
 type service struct {
-	repo Repository
+	repo        Repository
+	tokenRepo   TokenRepository
+	mailer      email.Mailer
+	messageRepo messaging.Repository
 }
 
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+type OtpMessagingDto struct {
+	Email     string
+	Username  string
+	Otp       string
+	EmailType email.OTPEmailType
+	UserID    uuid.UUID
+	EventID   *uuid.UUID
+	EventType *string
 }
 
-func (s *service) Register(input RegisterInput) (*AuthResponse, error) {
+func NewService(repo Repository, tokenRepo TokenRepository, mailer email.Mailer, messageRepo messaging.Repository) Service {
+	return &service{repo: repo, tokenRepo: tokenRepo, mailer: mailer, messageRepo: messageRepo}
+}
+
+func (s *service) sendMessage(msgOpt *OtpMessagingDto) {
+
+	msg := &models.MessageModel{
+		UserID:    msgOpt.UserID,
+		Recipient: msgOpt.Email,
+		Type:      messaging.MessageTypeEmailVerification,
+		Status:    messaging.MessageStatusSent,
+		EventType: msgOpt.EventType,
+		EventID:   msgOpt.EventID,
+	}
+
+	if err := s.mailer.SendOTP(msgOpt.Email, msgOpt.Username, msgOpt.Otp, msgOpt.EmailType); err != nil {
+		errStr := err.Error()
+		msg.Status = messaging.MessageStatusFailed
+		msg.Error = &errStr
+		logger.Instance().ErrorMsg("failed to send verification email to " + msgOpt.Email + ": " + errStr)
+	} else {
+		logger.Instance().Log("verification email sent to " + msgOpt.Email)
+	}
+	if err := s.messageRepo.Save(msg); err != nil {
+		logger.Instance().ErrorMsg("failed to save message log: " + err.Error())
+	}
+	fmt.Println("====printing the msg after===>")
+	fmt.Print(msg)
+	fmt.Println("\n===done after====>")
+}
+
+func (s *service) Register(input RegisterInput) (*RegisterResponse, error) {
 	hashed, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
@@ -66,8 +132,55 @@ func (s *service) Register(input RegisterInput) (*AuthResponse, error) {
 		Password: string(hashed),
 		FullName: input.FullName,
 	}
-
 	if err := s.repo.Create(user); err != nil {
+		return nil, err
+	}
+
+	vt, rawOTP, err := s.tokenRepo.Create(user.ID, TokenTypeEmailVerification)
+	if err != nil {
+		return nil, err
+	}
+
+	eventType := string(TokenTypeEmailVerification)
+	capturedVT := vt
+	go s.sendMessage(&OtpMessagingDto{
+		UserID:    user.ID,
+		Username:  user.FullName,
+		Email:     user.Email,
+		Otp:       rawOTP,
+		EventType: &eventType,
+		EventID:   &capturedVT.ID,
+		EmailType: email.OTPEmailType(messaging.MessageTypeEmailVerification),
+	})
+
+	return &RegisterResponse{
+		UserID:  user.ID.String(),
+		Message: "registration successful, please check your email for a verification code",
+	}, nil
+}
+
+// VerifyEmail validates the OTP, marks the user verified, and returns tokens.
+func (s *service) VerifyEmail(input VerifyEmailInput) (*AuthResponse, error) {
+	userID, err := uuid.Parse(input.UserID)
+	if err != nil {
+		return nil, ErrUserNotFound
+	}
+
+	vt, err := s.tokenRepo.FindValid(userID, input.OTP, TokenTypeEmailVerification)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.tokenRepo.MarkUsed(vt.ID); err != nil {
+		return nil, err
+	}
+
+	if err := s.repo.MarkVerified(userID); err != nil {
+		return nil, err
+	}
+
+	user, err := s.repo.FindByID(userID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -79,6 +192,7 @@ func (s *service) Register(input RegisterInput) (*AuthResponse, error) {
 	return &AuthResponse{User: user, Tokens: tokens}, nil
 }
 
+// Login checks credentials and that the email is verified before issuing tokens.
 func (s *service) Login(input LoginInput) (*AuthResponse, error) {
 	user, err := s.repo.FindByEmail(input.Email)
 	if err != nil {
@@ -92,6 +206,10 @@ func (s *service) Login(input LoginInput) (*AuthResponse, error) {
 		return nil, ErrInvalidCredentials
 	}
 
+	if !user.IsVerified {
+		return nil, ErrNotVerified
+	}
+
 	tokens, err := helpers.GenerateTokenPair(user.ID)
 	if err != nil {
 		return nil, err
@@ -100,13 +218,13 @@ func (s *service) Login(input LoginInput) (*AuthResponse, error) {
 	return &AuthResponse{User: user, Tokens: tokens}, nil
 }
 
+// RefreshTokens issues a new token pair from a valid refresh token.
 func (s *service) RefreshTokens(input RefreshInput) (*helpers.TokenPair, error) {
 	claims, err := helpers.ValidateRefreshToken(input.RefreshToken)
 	if err != nil {
 		return nil, err
 	}
 
-	// Confirm user still exists
 	_, err = s.repo.FindByID(claims.UserID)
 	if err != nil {
 		return nil, err
@@ -115,14 +233,56 @@ func (s *service) RefreshTokens(input RefreshInput) (*helpers.TokenPair, error) 
 	return helpers.GenerateTokenPair(claims.UserID)
 }
 
-func (s *service) ChangePassword(userID uuid.UUID, input ChangePasswordInput) error {
-	user, err := s.repo.FindByID(userID)
+// RequestChangePassword sends an OTP to the user email to authorize a password change.
+func (s *service) RequestChangePassword(input RequestChangePasswordInput) error {
+	user, err := s.repo.FindByEmail(input.Email)
+	if err != nil {
+		// Return nil even if not found to avoid email enumeration
+		if errors.Is(err, ErrUserNotFound) {
+			return nil
+		}
+		return err
+	}
+
+	if !user.IsVerified {
+		return ErrNotVerified
+	}
+
+	vt, rawOTP, err := s.tokenRepo.Create(user.ID, TokenTypeChangePassword)
 	if err != nil {
 		return err
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.CurrentPassword)); err != nil {
-		return ErrInvalidCredentials
+	eventType := string(TokenTypeChangePassword)
+	capturedVT := vt
+	go s.sendMessage(&OtpMessagingDto{
+		UserID:    user.ID,
+		Username:  user.FullName,
+		Email:     user.Email,
+		Otp:       rawOTP,
+		EventType: &eventType,
+		EventID:   &capturedVT.ID,
+		EmailType: email.OTPEmailType(messaging.MessageTypeChangePassword),
+	})
+
+	return nil
+}
+
+// ConfirmChangePassword validates the OTP then updates the password.
+func (s *service) ConfirmChangePassword(input ConfirmChangePasswordInput) error {
+	userID, err := uuid.Parse(input.UserID)
+	if err != nil {
+		return ErrUserNotFound
+	}
+
+	vt, err := s.tokenRepo.FindValid(userID, input.OTP, TokenTypeChangePassword)
+	if err != nil {
+		return err
+	}
+
+	user, err := s.repo.FindByID(userID)
+	if err != nil {
+		return err
 	}
 
 	// Prevent reuse of the same password
@@ -132,6 +292,10 @@ func (s *service) ChangePassword(userID uuid.UUID, input ChangePasswordInput) er
 
 	hashed, err := bcrypt.GenerateFromPassword([]byte(input.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
+		return err
+	}
+
+	if err := s.tokenRepo.MarkUsed(vt.ID); err != nil {
 		return err
 	}
 

@@ -20,6 +20,7 @@ type Repository interface {
 	FindByEmail(email string) (*models.UsersModel, error)
 	FindByID(id uuid.UUID) (*models.UsersModel, error)
 	UpdatePassword(id uuid.UUID, hashedPassword string) error
+	MarkVerified(id uuid.UUID) error
 }
 
 type repository struct {
@@ -62,6 +63,14 @@ func (r *repository) FindByID(id uuid.UUID) (*models.UsersModel, error) {
 
 func (r *repository) UpdatePassword(id uuid.UUID, hashedPassword string) error {
 	result := r.db.Model(&models.UsersModel{}).Where("id = ?", id).Update("password", hashedPassword)
+	if result.RowsAffected == 0 {
+		return ErrUserNotFound
+	}
+	return result.Error
+}
+
+func (r *repository) MarkVerified(id uuid.UUID) error {
+	result := r.db.Model(&models.UsersModel{}).Where("id = ?", id).Update("is_verified", true)
 	if result.RowsAffected == 0 {
 		return ErrUserNotFound
 	}
