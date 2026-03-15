@@ -21,11 +21,12 @@ const (
 )
 
 type smtpMailer struct {
-	host     string
-	port     int
-	username string
-	password string
-	from     string
+	host        string
+	port        int
+	username    string
+	password    string
+	fromAddress string // envelope sender — must match authenticated account
+	fromHeader  string
 }
 
 func NewMailer() Mailer {
@@ -33,12 +34,21 @@ func NewMailer() Mailer {
 	if port == 0 {
 		port = 587
 	}
+
+	username := os.Getenv("SMTP_USERNAME")
+
+	fromHeader := os.Getenv("SMTP_FROM")
+	if fromHeader == "" {
+		fromHeader = username
+	}
+
 	return &smtpMailer{
-		host:     os.Getenv("SMTP_HOST"),
-		port:     port,
-		username: os.Getenv("SMTP_USERNAME"),
-		password: os.Getenv("SMTP_PASSWORD"),
-		from:     os.Getenv("SMTP_FROM"),
+		host:        os.Getenv("SMTP_HOST"),
+		port:        port,
+		username:    username,
+		password:    os.Getenv("SMTP_PASSWORD"),
+		fromAddress: username,
+		fromHeader:  fromHeader,
 	}
 }
 
@@ -54,15 +64,18 @@ func (m *smtpMailer) SendOTP(to, name, otp string, emailType OTPEmailType) error
 func (m *smtpMailer) send(to, subject, body string) error {
 	auth := smtp.PlainAuth("", m.username, m.password, m.host)
 
+	// From:   display address shown to recipient e.g. "No Reply <no-reply@yourdomain.com>"
+	// Sender: actual authenticated account — tells providers who is really sending
+	//         without this, providers rewrite From to match the authenticated account
 	headers := fmt.Sprintf(
-		"From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n",
-		m.from, to, subject,
+		"From: %s\r\nSender: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n",
+		m.fromHeader, m.fromAddress, to, subject,
 	)
 
 	msg := []byte(headers + body)
 	addr := fmt.Sprintf("%s:%d", m.host, m.port)
 
-	return smtp.SendMail(addr, auth, m.from, []string{to}, msg)
+	return smtp.SendMail(addr, auth, m.fromAddress, []string{to}, msg)
 }
 
 // --- Templates ---

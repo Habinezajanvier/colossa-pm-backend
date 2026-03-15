@@ -2,7 +2,7 @@ package authentication
 
 import (
 	"errors"
-	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -59,7 +59,7 @@ type RequestChangePasswordInput struct {
 }
 
 type ConfirmChangePasswordInput struct {
-	UserID      string `json:"userId"          binding:"required"`
+	Email       string `json:"email"    binding:"required,email"`
 	OTP         string `json:"otp"             binding:"required,len=6"`
 	NewPassword string `json:"newPassword"     binding:"required,min=8"`
 }
@@ -116,24 +116,41 @@ func (s *service) sendMessage(msgOpt *OtpMessagingDto) {
 	if err := s.messageRepo.Save(msg); err != nil {
 		logger.Instance().ErrorMsg("failed to save message log: " + err.Error())
 	}
-	fmt.Println("====printing the msg after===>")
-	fmt.Print(msg)
-	fmt.Println("\n===done after====>")
 }
 
 func (s *service) Register(input RegisterInput) (*RegisterResponse, error) {
-	hashed, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
-	if err != nil {
+
+	existingUser, err := s.repo.FindByEmail(input.Email)
+	if err != nil && !errors.Is(err, ErrUserNotFound) {
 		return nil, err
 	}
 
-	user := &models.UsersModel{
-		Email:    input.Email,
-		Password: string(hashed),
-		FullName: input.FullName,
-	}
-	if err := s.repo.Create(user); err != nil {
-		return nil, err
+	var user *models.UsersModel
+
+	if existingUser != nil && !existingUser.IsVerified {
+		latest, err := s.tokenRepo.FindLatest(existingUser.ID, TokenTypeEmailVerification)
+		if err != nil && !errors.Is(err, ErrTokenNotFound) {
+			return nil, err
+		}
+		if latest != nil && time.Since(latest.CreatedAt) < 10*time.Minute {
+			return nil, ErrResendTooSoon
+		}
+		user = existingUser
+	} else if existingUser != nil && existingUser.IsVerified {
+		return nil, ErrEmailTaken
+	} else {
+		hashed, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+		if err != nil {
+			return nil, err
+		}
+		user = &models.UsersModel{
+			Email:    input.Email,
+			Password: string(hashed),
+			FullName: input.FullName,
+		}
+		if err := s.repo.Create(user); err != nil {
+			return nil, err
+		}
 	}
 
 	vt, rawOTP, err := s.tokenRepo.Create(user.ID, TokenTypeEmailVerification)
@@ -270,17 +287,13 @@ func (s *service) RequestChangePassword(input RequestChangePasswordInput) error 
 
 // ConfirmChangePassword validates the OTP then updates the password.
 func (s *service) ConfirmChangePassword(input ConfirmChangePasswordInput) error {
-	userID, err := uuid.Parse(input.UserID)
-	if err != nil {
-		return ErrUserNotFound
-	}
+	user, err := s.repo.FindByEmail(input.Email)
 
-	vt, err := s.tokenRepo.FindValid(userID, input.OTP, TokenTypeChangePassword)
 	if err != nil {
 		return err
 	}
 
-	user, err := s.repo.FindByID(userID)
+	vt, err := s.tokenRepo.FindValid(user.ID, input.OTP, TokenTypeChangePassword)
 	if err != nil {
 		return err
 	}
@@ -299,5 +312,5 @@ func (s *service) ConfirmChangePassword(input ConfirmChangePasswordInput) error 
 		return err
 	}
 
-	return s.repo.UpdatePassword(userID, string(hashed))
+	return s.repo.UpdatePassword(user.ID, string(hashed))
 }

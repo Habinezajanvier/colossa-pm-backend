@@ -9,11 +9,10 @@ import (
 	"colossa-pm/models"
 )
 
-// ErrUserNotFound is returned when a user lookup yields no result
-var ErrUserNotFound = errors.New("user not found")
-
-// ErrEmailTaken is returned when registering with an already-used email
-var ErrEmailTaken = errors.New("email already in use")
+var (
+	ErrUserNotFound = errors.New("user not found")
+	ErrEmailTaken   = errors.New("email already in use")
+)
 
 type Repository interface {
 	Create(user *models.UsersModel) error
@@ -32,14 +31,6 @@ func NewRepository(db *gorm.DB) Repository {
 }
 
 func (r *repository) Create(user *models.UsersModel) error {
-	var count int64
-	if err := r.db.Model(&models.UsersModel{}).Where("email = ?", user.Email).Count(&count).Error; err != nil {
-		return err
-	}
-	if count > 0 {
-		return ErrEmailTaken
-	}
-
 	return r.db.Create(user).Error
 }
 

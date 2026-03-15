@@ -2,6 +2,7 @@ package authentication
 
 import (
 	"colossa-pm/helpers"
+	"colossa-pm/logger"
 	"errors"
 	"net/http"
 
@@ -25,11 +26,14 @@ func (h *Handler) Register(c *gin.Context) {
 
 	resp, err := h.svc.Register(input)
 	if err != nil {
-		if errors.Is(err, ErrEmailTaken) {
+		switch {
+		case errors.Is(err, ErrEmailTaken):
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-			return
+		case errors.Is(err, ErrResendTooSoon):
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "registration faileds"})
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "registration failed"})
 		return
 	}
 
@@ -121,7 +125,16 @@ func (h *Handler) RequestChangePassword(c *gin.Context) {
 	}
 
 	// Always return 200 regardless of whether email exists — prevents enumeration
-	_ = h.svc.RequestChangePassword(input)
+	requestErr := h.svc.RequestChangePassword(input)
+
+	if requestErr != nil {
+		logger.Instance().ErrorMsg("Error with request change password" + requestErr.Error())
+	}
+
+	if errors.Is(requestErr, ErrNotVerified) {
+		c.JSON(http.StatusConflict, gin.H{"error": ErrNotVerified.Error()})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "if that email exists, a confirmation code has been sent"})
 }

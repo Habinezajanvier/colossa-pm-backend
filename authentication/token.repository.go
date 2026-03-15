@@ -23,6 +23,7 @@ var (
 	ErrTokenUsed     = errors.New("token has already been used")
 	ErrTokenExpired  = errors.New("token has expired")
 	ErrNotVerified   = errors.New("email not verified")
+	ErrResendTooSoon = errors.New("please wait at least 10 minutes before requesting a new code")
 )
 
 func generateOTP() (string, error) {
@@ -45,6 +46,7 @@ func hashOTP(otp string) string {
 type TokenRepository interface {
 	Create(userID uuid.UUID, tokenType models.TokenType) (*models.VerificationTokenModel, string, error)
 	FindValid(userID uuid.UUID, token string, tokenType models.TokenType) (*models.VerificationTokenModel, error)
+	FindLatest(userID uuid.UUID, tokenType models.TokenType) (*models.VerificationTokenModel, error)
 	MarkUsed(id uuid.UUID) error
 	InvalidatePrevious(userID uuid.UUID, tokenType models.TokenType) error
 }
@@ -90,6 +92,18 @@ func (r *tokenRepository) FindValid(userID uuid.UUID, token string, tokenType mo
 		"user_id = ? AND token = ? AND type = ? AND used = FALSE AND expires_at > ?",
 		userID, hashOTP(token), tokenType, time.Now(),
 	).First(&vt).Error
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrTokenNotFound
+	}
+	return &vt, err
+}
+
+func (r *tokenRepository) FindLatest(userID uuid.UUID, tokenType models.TokenType) (*models.VerificationTokenModel, error) {
+	var vt models.VerificationTokenModel
+	err := r.db.Where("user_id = ? AND type = ?", userID, tokenType).
+		Order("created_at DESC").
+		First(&vt).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrTokenNotFound
