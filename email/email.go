@@ -11,6 +11,7 @@ import (
 
 type Mailer interface {
 	SendOTP(to, name, otp string, emailType OTPEmailType) error
+	SendRaw(to, subject, body string) error
 }
 
 type OTPEmailType string
@@ -76,6 +77,10 @@ func (m *smtpMailer) send(to, subject, body string) error {
 	addr := fmt.Sprintf("%s:%d", m.host, m.port)
 
 	return smtp.SendMail(addr, auth, m.fromAddress, []string{to}, msg)
+}
+
+func (m *smtpMailer) SendRaw(to, subject, body string) error {
+	return m.send(to, subject, body)
 }
 
 // --- Templates ---
