@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"colossa-pm/helpers"
 	"colossa-pm/models"
 
 	"github.com/google/uuid"
@@ -9,7 +10,8 @@ import (
 
 type AuditRepository interface {
 	Save(log *models.AuditLogModel) error
-	FindByEntity(entityType string, entityID uuid.UUID) ([]models.AuditLogModel, error)
+	FindByEntity(entityType string, entityID uuid.UUID, params helpers.PaginationParams) (*helpers.PaginatedResult[models.AuditLogModel], error)
+	FindAll(params helpers.PaginationParams) (*helpers.PaginatedResult[models.AuditLogModel], error)
 }
 
 type repository struct {
@@ -24,10 +26,40 @@ func (r *repository) Save(log *models.AuditLogModel) error {
 	return r.db.Create(log).Error
 }
 
-func (r *repository) FindByEntity(entityType string, entityID uuid.UUID) ([]models.AuditLogModel, error) {
+func (r *repository) FindByEntity(entityType string, entityID uuid.UUID, params helpers.PaginationParams) (*helpers.PaginatedResult[models.AuditLogModel], error) {
+
 	var logs []models.AuditLogModel
-	err := r.db.Where("entity_type = ? AND entity_id = ?", entityType, entityID).
+	var total int64
+
+	if err := r.db.Model(&models.AuditLogModel{}).Where("entity_type = ? AND entity_id = ?", entityType, entityID).Count(&total).Error; err != nil {
+		return nil, err
+	}
+
+	if err := r.db.Model(&models.AuditLogModel{}).Where("entity_type = ? AND entity_id = ?", entityType, entityID).
 		Order("created_at DESC").
-		Find(&logs).Error
-	return logs, err
+		Limit(params.Limit).
+		Offset(params.Offset()).
+		Find(&logs).Error; err != nil {
+		return nil, err
+	}
+	return helpers.NewPaginatedResult(logs, total, params), nil
+}
+
+func (r *repository) FindAll(params helpers.PaginationParams) (*helpers.PaginatedResult[models.AuditLogModel], error) {
+
+	var logs []models.AuditLogModel
+	var total int64
+
+	if err := r.db.Model(&models.AuditLogModel{}).Count(&total).Error; err != nil {
+		return nil, err
+	}
+
+	if err := r.db.Order("created_at DESC").
+		Limit(params.Limit).
+		Offset(params.Offset()).
+		Find(&logs).Error; err != nil {
+		return nil, err
+	}
+
+	return helpers.NewPaginatedResult(logs, total, params), nil
 }

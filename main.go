@@ -5,6 +5,7 @@ import (
 	"colossa-pm/authentication"
 	"colossa-pm/database"
 	"colossa-pm/logger"
+	"colossa-pm/users"
 	"context"
 	"log"
 	"net/http"
@@ -50,6 +51,7 @@ func main() {
 	v1 := route.Group("/api/v1")
 	audit.RegisterRoutes(v1, auditRepo)
 	authentication.RegisterRoutes(v1, db)
+	users.RegisterRoutes(v1, db)
 
 	route.GET("/_health", func(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, gin.H{

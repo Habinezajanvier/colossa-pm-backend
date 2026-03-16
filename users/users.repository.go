@@ -1,4 +1,4 @@
-package authentication
+package users
 
 import (
 	"errors"
@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"colossa-pm/helpers"
 	"colossa-pm/models"
 )
 
@@ -20,6 +21,7 @@ type Repository interface {
 	FindByID(id uuid.UUID) (*models.UsersModel, error)
 	UpdatePassword(id uuid.UUID, hashedPassword string) error
 	MarkVerified(id uuid.UUID) error
+	FindAll(params helpers.PaginationParams) (*helpers.PaginatedResult[models.UsersModel], error)
 }
 
 type repository struct {
@@ -66,4 +68,24 @@ func (r *repository) MarkVerified(id uuid.UUID) error {
 		return ErrUserNotFound
 	}
 	return result.Error
+}
+
+func (r *repository) FindAll(params helpers.PaginationParams) (*helpers.PaginatedResult[models.UsersModel], error) {
+	params.Normalize()
+
+	var users []models.UsersModel
+	var total int64
+
+	if err := r.db.Model(&models.UsersModel{}).Count(&total).Error; err != nil {
+		return nil, err
+	}
+
+	if err := r.db.Order("created_at DESC").
+		Limit(params.Limit).
+		Offset(params.Offset()).
+		Find(&users).Error; err != nil {
+		return nil, err
+	}
+
+	return helpers.NewPaginatedResult(users, total, params), nil
 }

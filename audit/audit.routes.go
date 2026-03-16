@@ -12,6 +12,7 @@ func RegisterRoutes(rg *gin.RouterGroup, repo AuditRepository) {
 	routeGroup := rg.Group("/audit-logs")
 	{
 		routeGroup.Use(middlewares.Authenticate())
+		routeGroup.GET("/", h.GetAll)
 		routeGroup.GET("/:entityType/:entityId", h.GetByEntity)
 	}
 }
