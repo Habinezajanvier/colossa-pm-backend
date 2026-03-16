@@ -12,6 +12,7 @@ import (
 	"colossa-pm/logger"
 	"colossa-pm/messaging"
 	"colossa-pm/models"
+	"colossa-pm/users"
 )
 
 var (
@@ -74,7 +75,7 @@ type Service interface {
 }
 
 type service struct {
-	repo        Repository
+	repo        users.Repository
 	tokenRepo   TokenRepository
 	mailer      email.Mailer
 	messageRepo messaging.Repository
@@ -90,7 +91,7 @@ type OtpMessagingDto struct {
 	EventType *string
 }
 
-func NewService(repo Repository, tokenRepo TokenRepository, mailer email.Mailer, messageRepo messaging.Repository) Service {
+func NewService(repo users.Repository, tokenRepo TokenRepository, mailer email.Mailer, messageRepo messaging.Repository) Service {
 	return &service{repo: repo, tokenRepo: tokenRepo, mailer: mailer, messageRepo: messageRepo}
 }
 
@@ -121,7 +122,7 @@ func (s *service) sendMessage(msgOpt *OtpMessagingDto) {
 func (s *service) Register(input RegisterInput) (*RegisterResponse, error) {
 
 	existingUser, err := s.repo.FindByEmail(input.Email)
-	if err != nil && !errors.Is(err, ErrUserNotFound) {
+	if err != nil && !errors.Is(err, users.ErrUserNotFound) {
 		return nil, err
 	}
 
@@ -137,7 +138,7 @@ func (s *service) Register(input RegisterInput) (*RegisterResponse, error) {
 		}
 		user = existingUser
 	} else if existingUser != nil && existingUser.IsVerified {
-		return nil, ErrEmailTaken
+		return nil, users.ErrEmailTaken
 	} else {
 		hashed, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 		if err != nil {
@@ -180,7 +181,7 @@ func (s *service) Register(input RegisterInput) (*RegisterResponse, error) {
 func (s *service) VerifyEmail(input VerifyEmailInput) (*AuthResponse, error) {
 	userID, err := uuid.Parse(input.UserID)
 	if err != nil {
-		return nil, ErrUserNotFound
+		return nil, users.ErrUserNotFound
 	}
 
 	vt, err := s.tokenRepo.FindValid(userID, input.OTP, TokenTypeEmailVerification)
@@ -213,7 +214,7 @@ func (s *service) VerifyEmail(input VerifyEmailInput) (*AuthResponse, error) {
 func (s *service) Login(input LoginInput) (*AuthResponse, error) {
 	user, err := s.repo.FindByEmail(input.Email)
 	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
+		if errors.Is(err, users.ErrUserNotFound) {
 			return nil, ErrInvalidCredentials
 		}
 		return nil, err
@@ -255,7 +256,7 @@ func (s *service) RequestChangePassword(input RequestChangePasswordInput) (*mode
 	user, err := s.repo.FindByEmail(input.Email)
 	if err != nil {
 		// Return nil even if not found to avoid email enumeration
-		if errors.Is(err, ErrUserNotFound) {
+		if errors.Is(err, users.ErrUserNotFound) {
 			return nil, nil
 		}
 		return nil, err

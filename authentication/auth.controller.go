@@ -5,6 +5,7 @@ import (
 	"colossa-pm/helpers"
 	"colossa-pm/logger"
 	"colossa-pm/models"
+	"colossa-pm/users"
 	"errors"
 	"net/http"
 
@@ -30,7 +31,7 @@ func (h *Handler) Register(c *gin.Context) {
 	resp, err := h.svc.Register(input)
 	if err != nil {
 		switch {
-		case errors.Is(err, ErrEmailTaken):
+		case errors.Is(err, users.ErrEmailTaken):
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		case errors.Is(err, ErrResendTooSoon):
 			c.JSON(http.StatusTooManyRequests, gin.H{"error": err.Error()})
@@ -65,7 +66,7 @@ func (h *Handler) VerifyEmail(c *gin.Context) {
 			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "invalid or expired OTP"})
 		case errors.Is(err, ErrTokenExpired):
 			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
-		case errors.Is(err, ErrUserNotFound):
+		case errors.Is(err, users.ErrUserNotFound):
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "verification failed"})
@@ -118,7 +119,7 @@ func (h *Handler) RefreshTokens(c *gin.Context) {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			return
 		}
-		if errors.Is(err, ErrUserNotFound) {
+		if errors.Is(err, users.ErrUserNotFound) {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "user no longer exists"})
 			return
 		}
@@ -169,7 +170,7 @@ func (h *Handler) ConfirmChangePassword(c *gin.Context) {
 			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 		case errors.Is(err, ErrSamePassword):
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		case errors.Is(err, ErrUserNotFound):
+		case errors.Is(err, users.ErrUserNotFound):
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "password change failed"})

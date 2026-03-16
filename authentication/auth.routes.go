@@ -4,6 +4,7 @@ import (
 	"colossa-pm/email"
 	"colossa-pm/messaging"
 	"colossa-pm/middlewares"
+	"colossa-pm/users"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -16,7 +17,7 @@ import (
 //	api := r.Group("/api/v1")
 //	auth.RegisterRoutes(api, db)
 func RegisterRoutes(rg *gin.RouterGroup, db *gorm.DB) {
-	repo := NewRepository(db)
+	repo := users.NewRepository(db)
 	tokenRepo := NewTokenRepository(db)
 	mailer := email.NewMailer()
 	messageRepo := messaging.NewRepository(db)
