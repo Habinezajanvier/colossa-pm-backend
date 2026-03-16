@@ -1,6 +1,7 @@
 package main
 
 import (
+	"colossa-pm/audit"
 	"colossa-pm/authentication"
 	"colossa-pm/database"
 	"colossa-pm/logger"
@@ -17,11 +18,8 @@ import (
 	"github.com/joho/godotenv"
 )
 
-var dbConn database.DbConnection
-
-func initlizeApp(route *gin.Engine) {
-	err := godotenv.Load()
-	if err != nil {
+func main() {
+	if err := godotenv.Load(); err != nil {
 		log.Fatal("Error loading .env file")
 	}
 
@@ -31,34 +29,27 @@ func initlizeApp(route *gin.Engine) {
 	}
 	gin.SetMode(ginMode)
 
+	// Initialize DB first — everything depends on it
 	dbConn := database.Instance()
-
 	if err := dbConn.InitializeDb(); err != nil {
 		log.Fatal("Failed to connect to database")
 	}
 
 	db := dbConn.DB()
 
-	v1 := route.Group("/api/v1")
-
-	authentication.RegisterRoutes(v1, db)
-
-}
-
-func main() {
 	route := gin.New()
 
-	logger := logger.Instance()
-
-	route.Use(logger.GinEndpointLogger())
+	appLogger := logger.Instance()
+	route.Use(gin.Recovery())
+	route.Use(appLogger.GinEndpointLogger())
 	route.Use(cors.Default())
 
-	initlizeApp(route)
+	auditRepo := audit.NewAuditRepository(db)
+	route.Use(audit.Middleware(audit.NewService(auditRepo)))
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
+	v1 := route.Group("/api/v1")
+	audit.RegisterRoutes(v1, auditRepo)
+	authentication.RegisterRoutes(v1, db)
 
 	route.GET("/_health", func(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, gin.H{
@@ -68,38 +59,39 @@ func main() {
 		})
 	})
 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
 	srv := &http.Server{
 		Addr:    ":" + port,
 		Handler: route,
 	}
 
-	// Start the server in a goroutine so it doesn't block the shutdown logic below
 	go func() {
-		logger.Log("server starting on port " + port)
+		appLogger.Log("server starting on port " + port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server failed to start: %v", err)
 		}
 	}()
 
-	// Block until we receive SIGINT or SIGTERM (Ctrl+C, kill, Docker stop, etc.)
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	logger.Log("shutdown signal received, shutting down gracefully...")
+	appLogger.Log("shutdown signal received, shutting down gracefully...")
 
-	// Give in-flight requests up to 10 seconds to complete before closing
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		logger.ErrorMsg("server forced to shutdown: " + err.Error())
+		appLogger.ErrorMsg("server forced to shutdown: " + err.Error())
 	}
 
-	// Safely close the DB — all requests have finished
 	if err := dbConn.DisconnectDb(); err != nil {
-		logger.ErrorMsg("error closing database: " + err.Error())
+		appLogger.ErrorMsg("error closing database: " + err.Error())
 	}
 
-	logger.Log("shutdown complete")
+	appLogger.Log("shutdown complete")
 }

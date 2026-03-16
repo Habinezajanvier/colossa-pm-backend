@@ -1,12 +1,15 @@
 package authentication
 
 import (
+	"colossa-pm/audit"
 	"colossa-pm/helpers"
 	"colossa-pm/logger"
+	"colossa-pm/models"
 	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type Handler struct {
@@ -37,6 +40,9 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
+	audit.SetAction(c, "user.registered")
+	audit.SetAuthUser(c, uuid.MustParse(resp.UserID), input.FullName)
+	audit.SetEntity(c, "user", uuid.MustParse(resp.UserID))
 	c.JSON(http.StatusCreated, resp)
 }
 
@@ -67,6 +73,9 @@ func (h *Handler) VerifyEmail(c *gin.Context) {
 		return
 	}
 
+	audit.SetAction(c, "user.email_verified")
+	audit.SetAuthUser(c, resp.User.ID, resp.User.FullName)
+	audit.SetEntity(c, "user", resp.User.ID)
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -90,6 +99,9 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
+	audit.SetAction(c, "user.logged_in")
+	audit.SetAuthUser(c, resp.User.ID, resp.User.FullName)
+	audit.SetEntity(c, "user", resp.User.ID)
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -125,7 +137,7 @@ func (h *Handler) RequestChangePassword(c *gin.Context) {
 	}
 
 	// Always return 200 regardless of whether email exists — prevents enumeration
-	requestErr := h.svc.RequestChangePassword(input)
+	resp, requestErr := h.svc.RequestChangePassword(input)
 
 	if requestErr != nil {
 		logger.Instance().ErrorMsg("Error with request change password" + requestErr.Error())
@@ -136,6 +148,8 @@ func (h *Handler) RequestChangePassword(c *gin.Context) {
 		return
 	}
 
+	audit.SetAction(c, "user.change_password_requested")
+	audit.SetAuthUser(c, resp.ID, resp.FullName)
 	c.JSON(http.StatusOK, gin.H{"message": "if that email exists, a confirmation code has been sent"})
 }
 
@@ -146,7 +160,7 @@ func (h *Handler) ConfirmChangePassword(c *gin.Context) {
 		return
 	}
 
-	err := h.svc.ConfirmChangePassword(input)
+	resp, err := h.svc.ConfirmChangePassword(input)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrTokenNotFound):
@@ -163,5 +177,11 @@ func (h *Handler) ConfirmChangePassword(c *gin.Context) {
 		return
 	}
 
+	audit.SetAction(c, "user.password_changed")
+	audit.SetAuthUser(c, resp.ID, resp.FullName)
+	audit.SetDiff(c,
+		models.JSON{"password": "[redacted]"},
+		models.JSON{"password": "[redacted]"},
+	)
 	c.JSON(http.StatusOK, gin.H{"message": "password updated successfully"})
 }
