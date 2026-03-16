@@ -24,6 +24,7 @@ const (
 
 type Claims struct {
 	UserID    uuid.UUID `json:"userId"`
+	FullName  string    `json:"fullName"`
 	TokenType TokenType `json:"tokenType"`
 	jwt.RegisteredClaims
 }
@@ -58,13 +59,13 @@ func refreshTTL() time.Duration {
 }
 
 // GenerateTokenPair issues a new access + refresh token pair for a user
-func GenerateTokenPair(userID uuid.UUID) (*TokenPair, error) {
-	accessToken, err := generateToken(userID, AccessToken, accessTTL(), accessSecret())
+func GenerateTokenPair(userID uuid.UUID, fullName string) (*TokenPair, error) {
+	accessToken, err := generateToken(userID, fullName, AccessToken, accessTTL(), accessSecret())
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := generateToken(userID, RefreshToken, refreshTTL(), refreshSecret())
+	refreshToken, err := generateToken(userID, fullName, RefreshToken, refreshTTL(), refreshSecret())
 	if err != nil {
 		return nil, err
 	}
@@ -75,9 +76,10 @@ func GenerateTokenPair(userID uuid.UUID) (*TokenPair, error) {
 	}, nil
 }
 
-func generateToken(userID uuid.UUID, tokenType TokenType, ttl time.Duration, secret []byte) (string, error) {
+func generateToken(userID uuid.UUID, fullName string, tokenType TokenType, ttl time.Duration, secret []byte) (string, error) {
 	claims := Claims{
 		UserID:    userID,
+		FullName:  fullName,
 		TokenType: tokenType,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),

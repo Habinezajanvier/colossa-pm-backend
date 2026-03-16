@@ -1,0 +1,1 @@
+ALTER TABLE audit_logs DROP COLUMN IF EXISTS user_full_name;

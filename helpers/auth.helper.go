@@ -15,3 +15,12 @@ func GetUserID(c *gin.Context) (uuid.UUID, bool) {
 	id, ok := val.(uuid.UUID)
 	return id, ok
 }
+
+func GetClaims(c *gin.Context) (*Claims, bool) {
+	val, exists := c.Get("claims")
+	if !exists {
+		return nil, false
+	}
+	claims, ok := val.(*Claims)
+	return claims, ok
+}

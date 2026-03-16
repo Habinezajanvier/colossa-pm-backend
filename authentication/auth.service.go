@@ -69,8 +69,8 @@ type Service interface {
 	VerifyEmail(input VerifyEmailInput) (*AuthResponse, error)
 	Login(input LoginInput) (*AuthResponse, error)
 	RefreshTokens(input RefreshInput) (*helpers.TokenPair, error)
-	RequestChangePassword(input RequestChangePasswordInput) error
-	ConfirmChangePassword(input ConfirmChangePasswordInput) error
+	RequestChangePassword(input RequestChangePasswordInput) (*models.UsersModel, error)
+	ConfirmChangePassword(input ConfirmChangePasswordInput) (*models.UsersModel, error)
 }
 
 type service struct {
@@ -201,7 +201,7 @@ func (s *service) VerifyEmail(input VerifyEmailInput) (*AuthResponse, error) {
 		return nil, err
 	}
 
-	tokens, err := helpers.GenerateTokenPair(user.ID)
+	tokens, err := helpers.GenerateTokenPair(user.ID, user.FullName)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +227,7 @@ func (s *service) Login(input LoginInput) (*AuthResponse, error) {
 		return nil, ErrNotVerified
 	}
 
-	tokens, err := helpers.GenerateTokenPair(user.ID)
+	tokens, err := helpers.GenerateTokenPair(user.ID, user.FullName)
 	if err != nil {
 		return nil, err
 	}
@@ -247,27 +247,27 @@ func (s *service) RefreshTokens(input RefreshInput) (*helpers.TokenPair, error) 
 		return nil, err
 	}
 
-	return helpers.GenerateTokenPair(claims.UserID)
+	return helpers.GenerateTokenPair(claims.UserID, claims.FullName)
 }
 
 // RequestChangePassword sends an OTP to the user email to authorize a password change.
-func (s *service) RequestChangePassword(input RequestChangePasswordInput) error {
+func (s *service) RequestChangePassword(input RequestChangePasswordInput) (*models.UsersModel, error) {
 	user, err := s.repo.FindByEmail(input.Email)
 	if err != nil {
 		// Return nil even if not found to avoid email enumeration
 		if errors.Is(err, ErrUserNotFound) {
-			return nil
+			return nil, nil
 		}
-		return err
+		return nil, err
 	}
 
 	if !user.IsVerified {
-		return ErrNotVerified
+		return nil, ErrNotVerified
 	}
 
 	vt, rawOTP, err := s.tokenRepo.Create(user.ID, TokenTypeChangePassword)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	eventType := string(TokenTypeChangePassword)
@@ -282,35 +282,35 @@ func (s *service) RequestChangePassword(input RequestChangePasswordInput) error 
 		EmailType: email.OTPEmailType(messaging.MessageTypeChangePassword),
 	})
 
-	return nil
+	return user, nil
 }
 
 // ConfirmChangePassword validates the OTP then updates the password.
-func (s *service) ConfirmChangePassword(input ConfirmChangePasswordInput) error {
+func (s *service) ConfirmChangePassword(input ConfirmChangePasswordInput) (*models.UsersModel, error) {
 	user, err := s.repo.FindByEmail(input.Email)
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	vt, err := s.tokenRepo.FindValid(user.ID, input.OTP, TokenTypeChangePassword)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Prevent reuse of the same password
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.NewPassword)); err == nil {
-		return ErrSamePassword
+		return nil, ErrSamePassword
 	}
 
 	hashed, err := bcrypt.GenerateFromPassword([]byte(input.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := s.tokenRepo.MarkUsed(vt.ID); err != nil {
-		return err
+		return nil, err
 	}
 
-	return s.repo.UpdatePassword(user.ID, string(hashed))
+	return user, s.repo.UpdatePassword(user.ID, string(hashed))
 }
