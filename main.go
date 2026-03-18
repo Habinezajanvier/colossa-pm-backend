@@ -3,6 +3,7 @@ package main
 import (
 	"colossa-pm/audit"
 	"colossa-pm/authentication"
+	"colossa-pm/chat"
 	"colossa-pm/database"
 	"colossa-pm/logger"
 	"colossa-pm/users"
@@ -49,11 +50,14 @@ func main() {
 	auditRepo := audit.NewAuditRepository(db)
 	route.Use(audit.Middleware(audit.NewService(auditRepo)))
 
+	route.Static("/uploads", "./uploads")
+
 	v1 := route.Group("/api/v1")
 	audit.RegisterRoutes(v1, auditRepo)
 	authentication.RegisterRoutes(v1, db)
 	users.RegisterRoutes(v1, db)
 	workspace.RegisterRoutes(v1, db)
+	chat.RegisterRoutes(v1, db)
 
 	route.GET("/_health", func(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, gin.H{
