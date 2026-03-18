@@ -1,0 +1,6 @@
+DROP TABLE IF EXISTS channels;
+DROP TABLE IF EXISTS conversation_participants;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS member_one UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS member_two UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE conversations DROP COLUMN IF EXISTS type;
+ 

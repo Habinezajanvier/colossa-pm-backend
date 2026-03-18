@@ -3,6 +3,7 @@ package main
 import (
 	"colossa-pm/audit"
 	"colossa-pm/authentication"
+	"colossa-pm/channel"
 	"colossa-pm/chat"
 	"colossa-pm/database"
 	"colossa-pm/logger"
@@ -58,6 +59,7 @@ func main() {
 	users.RegisterRoutes(v1, db)
 	workspace.RegisterRoutes(v1, db)
 	chat.RegisterRoutes(v1, db)
+	channel.RegisterRoutes(v1, db)
 
 	route.GET("/_health", func(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, gin.H{

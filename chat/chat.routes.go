@@ -30,23 +30,28 @@ func RegisterRoutes(rg *gin.RouterGroup, db *gorm.DB) {
 	// WebSocket
 	chat.GET("/conversations/:conversationId/ws", h.ServeWS)
 
-	chat.Use(middlewares.Authenticate())
+	protected := chat.Group("/")
+	protected.Use(middlewares.Authenticate())
 	{
 		// Conversations
-		chat.POST("/conversations", h.StartConversation)
-		chat.GET("/conversations", h.GetConversations)
+		protected.POST("/conversations", h.StartConversation)
+		protected.GET("/conversations", h.GetConversations)
+		protected.GET("/conversations/dm", h.GetDMConversations)
+
+		// Participants
+		protected.GET("/conversations/:conversationId/participants", h.GetParticipants)
 
 		// Messages
-		chat.GET("/conversations/:conversationId/messages", h.GetMessages)
-		chat.POST("/conversations/:conversationId/messages", h.SendMessage)
-		chat.DELETE("/conversations/:conversationId/messages/:messageId", h.DeleteMessage)
+		protected.GET("/conversations/:conversationId/messages", h.GetMessages)
+		protected.POST("/conversations/:conversationId/messages", h.SendMessage)
+		protected.DELETE("/conversations/:conversationId/messages/:messageId", h.DeleteMessage)
 
 		// Threads
-		chat.GET("/conversations/:conversationId/messages/:messageId/replies", h.GetReplies)
+		protected.GET("/conversations/:conversationId/messages/:messageId/replies", h.GetReplies)
 
 		// Reactions
-		chat.POST("/conversations/:conversationId/messages/:messageId/reactions", h.AddReaction)
-		chat.DELETE("/conversations/:conversationId/messages/:messageId/reactions/:emoji", h.RemoveReaction)
+		protected.POST("/conversations/:conversationId/messages/:messageId/reactions", h.AddReaction)
+		protected.DELETE("/conversations/:conversationId/messages/:messageId/reactions/:emoji", h.RemoveReaction)
 
 	}
 }

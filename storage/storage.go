@@ -74,7 +74,7 @@ func newLocalClient() *localClient {
 	if baseURL == "" {
 		baseURL = "http://localhost:8080"
 	}
-	return &localClient{uploadDir: uploadDir, baseURL: baseURL}
+	return &localClient{uploadDir: uploadDir, baseURL: strings.TrimSpace(baseURL)}
 }
 
 func (c *localClient) Upload(_ context.Context, folder string, file *multipart.FileHeader) (*UploadedFile, error) {

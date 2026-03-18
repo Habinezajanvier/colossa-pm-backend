@@ -29,7 +29,7 @@ type SendMessageInput struct {
 	ConversationID string                  `json:"conversationId" binding:"required"`
 	Body           *string                 `json:"body"`
 	ParentID       *string                 `json:"parentId"`
-	Files          []*multipart.FileHeader `json:"-"` // set from multipart form
+	Files          []*multipart.FileHeader `json:"-"`
 }
 
 type AddReactionInput struct {
@@ -41,6 +41,8 @@ type AddReactionInput struct {
 type Service interface {
 	StartConversation(userID uuid.UUID, input StartConversationInput) (*models.ConversationModel, error)
 	GetConversations(userID uuid.UUID, params helpers.PaginationParams) (*helpers.PaginatedResult[models.ConversationModel], error)
+	GetDMConversations(userID uuid.UUID, params helpers.PaginationParams) (*helpers.PaginatedResult[models.DMConversation], error)
+	GetParticipants(userID, conversationID uuid.UUID) ([]models.ConversationParticipantModel, error)
 	GetMessages(userID uuid.UUID, conversationID uuid.UUID, params helpers.PaginationParams) (*helpers.PaginatedResult[models.ChatMessageModel], error)
 	GetReplies(userID uuid.UUID, conversationID, parentID uuid.UUID) ([]models.ChatMessageModel, error)
 	SendMessage(senderID uuid.UUID, input SendMessageInput) (*models.ChatMessageModel, error)
@@ -68,6 +70,15 @@ func NewService(repo Repository, workspaceRepo workspace.Repository, attachmentR
 	}
 }
 
+func (s *service) isParticipant(userID, conversationID uuid.UUID) error {
+	_, err := s.repo.FindParticipant(conversationID, userID)
+	return err
+}
+
+func (s *service) VerifyParticipant(userID, conversationID uuid.UUID) error {
+	return s.isParticipant(userID, conversationID)
+}
+
 func (s *service) StartConversation(userID uuid.UUID, input StartConversationInput) (*models.ConversationModel, error) {
 	workspaceID, err := uuid.Parse(input.WorkspaceID)
 	if err != nil {
@@ -78,7 +89,7 @@ func (s *service) StartConversation(userID uuid.UUID, input StartConversationInp
 		return nil, errors.New("invalid recipientId")
 	}
 
-	// Verify both users are members of the workspace
+	// Verify both users are workspace members
 	if _, err := s.workspaceRepo.FindMember(workspaceID, userID); err != nil {
 		return nil, ErrNotWorkspaceMember
 	}
@@ -86,41 +97,79 @@ func (s *service) StartConversation(userID uuid.UUID, input StartConversationInp
 		return nil, ErrNotWorkspaceMember
 	}
 
-	return s.repo.FindOrCreateConversation(workspaceID, userID, recipientID)
+	// Return existing DM if one already exists
+	existing, err := s.repo.FindDMConversation(workspaceID, userID, recipientID)
+	if err == nil {
+		return existing, nil
+	}
+	if !errors.Is(err, ErrConversationNotFound) {
+		return nil, err
+	}
+
+	// Create new DM conversation
+	conv := &models.ConversationModel{
+		WorkspaceID: workspaceID,
+		Type:        models.ConversationTypeDM,
+	}
+	if err := s.repo.CreateConversation(conv); err != nil {
+		return nil, err
+	}
+
+	// Add both users as participants
+	for _, uid := range []uuid.UUID{userID, recipientID} {
+		if err := s.repo.AddParticipant(&models.ConversationParticipantModel{
+			ConversationID: conv.ID,
+			UserID:         uid,
+			IsAdmin:        false,
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	return conv, nil
+}
+
+func (s *service) GetDMConversations(userID uuid.UUID, params helpers.PaginationParams) (*helpers.PaginatedResult[models.DMConversation], error) {
+	return s.repo.FindDMConversationsByUser(userID, params)
 }
 
 func (s *service) GetConversations(userID uuid.UUID, params helpers.PaginationParams) (*helpers.PaginatedResult[models.ConversationModel], error) {
 	return s.repo.FindConversationsByUser(userID, params)
 }
 
-func (s *service) isParticipant(userID, conversationID uuid.UUID) error {
-	conv, err := s.repo.FindConversation(conversationID)
-	if err != nil {
-		return err
+func (s *service) GetParticipants(userID, conversationID uuid.UUID) ([]models.ConversationParticipantModel, error) {
+	if err := s.isParticipant(userID, conversationID); err != nil {
+		return nil, err
 	}
-	if conv.MemberOne != userID && conv.MemberTwo != userID {
-		return ErrNotParticipant
-	}
-	return nil
+	return s.repo.FindParticipants(conversationID)
 }
 
 func (s *service) GetMessages(userID uuid.UUID, conversationID uuid.UUID, params helpers.PaginationParams) (*helpers.PaginatedResult[models.ChatMessageModel], error) {
 	if err := s.isParticipant(userID, conversationID); err != nil {
 		return nil, err
 	}
-	return s.repo.FindMessages(conversationID, params)
+
+	result, err := s.repo.FindMessages(conversationID, params)
+	if err != nil {
+		return nil, err
+	}
+
+	s.hydrateFiles(result.Data)
+	return result, nil
 }
 
 func (s *service) GetReplies(userID uuid.UUID, conversationID, parentID uuid.UUID) ([]models.ChatMessageModel, error) {
 	if err := s.isParticipant(userID, conversationID); err != nil {
 		return nil, err
 	}
-	return s.repo.FindReplies(parentID)
-}
 
-// VerifyParticipant is exported for use in the WebSocket handler
-func (s *service) VerifyParticipant(userID, conversationID uuid.UUID) error {
-	return s.isParticipant(userID, conversationID)
+	replies, err := s.repo.FindReplies(parentID)
+	if err != nil {
+		return nil, err
+	}
+
+	s.hydrateFiles(replies)
+	return replies, nil
 }
 
 func (s *service) SendMessage(senderID uuid.UUID, input SendMessageInput) (*models.ChatMessageModel, error) {
@@ -178,13 +227,12 @@ func (s *service) SendMessage(senderID uuid.UUID, input SendMessageInput) (*mode
 		}
 	}
 
-	// Reload with relations for the broadcast payload
+	// Reload with relations
 	full, err := s.repo.FindMessageByID(msg.ID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Attach uploaded files to response
 	if len(input.Files) > 0 {
 		result, _ := s.attachmentRepo.FindByEntity("chat_message", msg.ID, helpers.PaginationParams{Page: 1, Limit: 100})
 		if result != nil {
@@ -192,7 +240,6 @@ func (s *service) SendMessage(senderID uuid.UUID, input SendMessageInput) (*mode
 		}
 	}
 
-	// Broadcast to all WebSocket clients in the conversation
 	s.hub.Broadcast(conversationID, "message", full, nil)
 
 	return full, nil
@@ -258,4 +305,22 @@ func (s *service) RemoveReaction(userID, messageID uuid.UUID, emoji string) erro
 	}, nil)
 
 	return nil
+}
+
+// hydrateFiles loads attachments for a slice of messages in one query per message.
+// Since Files is gorm:"-" we must load them manually after fetching messages.
+func (s *service) hydrateFiles(messages []models.ChatMessageModel) {
+	for i := range messages {
+		result, _ := s.attachmentRepo.FindByEntity("chat_message", messages[i].ID, helpers.PaginationParams{Page: 1, Limit: 100})
+		if result != nil {
+			messages[i].Files = result.Data
+		}
+		// Also hydrate replies
+		for j := range messages[i].Replies {
+			replyResult, _ := s.attachmentRepo.FindByEntity("chat_message", messages[i].Replies[j].ID, helpers.PaginationParams{Page: 1, Limit: 100})
+			if replyResult != nil {
+				messages[i].Replies[j].Files = replyResult.Data
+			}
+		}
+	}
 }

@@ -7,12 +7,40 @@ import (
 	"gorm.io/gorm"
 )
 
+type ConversationType string
+
+const (
+	ConversationTypeDM      ConversationType = "dm"
+	ConversationTypeChannel ConversationType = "channel"
+)
+
 type ConversationModel struct {
-	ID          uuid.UUID `gorm:"type:uuid;primaryKey;default:(-)" json:"id"`
-	WorkspaceID uuid.UUID `gorm:"type:uuid;not null;index"         json:"workspaceId"`
-	MemberOne   uuid.UUID `gorm:"type:uuid;not null;index"         json:"memberOne"`
-	MemberTwo   uuid.UUID `gorm:"type:uuid;not null;index"         json:"memberTwo"`
-	CreatedAt   time.Time `                                        json:"createdAt"`
+	ID          uuid.UUID        `gorm:"type:uuid;primaryKey;default:(-)" json:"id"`
+	WorkspaceID uuid.UUID        `gorm:"type:uuid;not null;index"         json:"workspaceId"`
+	Type        ConversationType `gorm:"type:varchar(10);not null"        json:"type"`
+	CreatedAt   time.Time        `                                        json:"createdAt"`
+
+	// Relations
+	Participants []ConversationParticipantModel `gorm:"foreignKey:ConversationID" json:"participants,omitempty"`
+}
+
+type ConversationParticipantModel struct {
+	ConversationID uuid.UUID   `gorm:"type:uuid;primaryKey;index"      json:"conversationId"`
+	UserID         uuid.UUID   `gorm:"type:uuid;primaryKey;index"      json:"userId"`
+	IsAdmin        bool        `gorm:"not null;default:false"          json:"isAdmin"`
+	JoinedAt       time.Time   `                                       json:"joinedAt"`
+	User           *UsersModel `gorm:"foreignKey:UserID;references:ID" json:"user,omitempty"`
+}
+
+func (ConversationParticipantModel) TableName() string {
+	return "conversation_participants"
+}
+
+// DMConversation wraps a conversation with all other participants populated
+// Works for both 1-on-1 and group DMs
+type DMConversation struct {
+	ConversationModel
+	OtherParticipants []UsersModel `json:"otherParticipants"`
 }
 
 func (c *ConversationModel) BeforeCreate(tx *gorm.DB) error {
