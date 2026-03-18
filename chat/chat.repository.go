@@ -2,6 +2,7 @@ package chat
 
 import (
 	"errors"
+	"time"
 
 	"colossa-pm/helpers"
 	"colossa-pm/models"
@@ -14,14 +15,23 @@ var (
 	ErrConversationNotFound = errors.New("conversation not found")
 	ErrMessageNotFound      = errors.New("message not found")
 	ErrNotParticipant       = errors.New("you are not a participant of this conversation")
+	ErrAlreadyParticipant   = errors.New("user is already a participant")
 	ErrAlreadyReacted       = errors.New("you have already reacted with this emoji")
 )
 
 type Repository interface {
 	// Conversations
-	FindOrCreateConversation(workspaceID, memberOne, memberTwo uuid.UUID) (*models.ConversationModel, error)
+	CreateConversation(conv *models.ConversationModel) error
 	FindConversation(id uuid.UUID) (*models.ConversationModel, error)
 	FindConversationsByUser(userID uuid.UUID, params helpers.PaginationParams) (*helpers.PaginatedResult[models.ConversationModel], error)
+	FindDMConversationsByUser(userID uuid.UUID, params helpers.PaginationParams) (*helpers.PaginatedResult[models.DMConversation], error)
+	FindDMConversation(workspaceID, userOne, userTwo uuid.UUID) (*models.ConversationModel, error)
+
+	// Participants
+	AddParticipant(p *models.ConversationParticipantModel) error
+	FindParticipant(conversationID, userID uuid.UUID) (*models.ConversationParticipantModel, error)
+	FindParticipants(conversationID uuid.UUID) ([]models.ConversationParticipantModel, error)
+	RemoveParticipant(conversationID, userID uuid.UUID) error
 
 	// Messages
 	CreateMessage(msg *models.ChatMessageModel) error
@@ -45,33 +55,8 @@ func NewRepository(db *gorm.DB) Repository {
 
 // --- Conversations ---
 
-// FindOrCreateConversation ensures member_one < member_two for the unique constraint
-func (r *repository) FindOrCreateConversation(workspaceID, memberOne, memberTwo uuid.UUID) (*models.ConversationModel, error) {
-	// Enforce consistent ordering
-	if memberOne.String() > memberTwo.String() {
-		memberOne, memberTwo = memberTwo, memberOne
-	}
-
-	var conv models.ConversationModel
-	err := r.db.Where("workspace_id = ? AND member_one = ? AND member_two = ?", workspaceID, memberOne, memberTwo).
-		First(&conv).Error
-
-	if err == nil {
-		return &conv, nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, err
-	}
-
-	conv = models.ConversationModel{
-		WorkspaceID: workspaceID,
-		MemberOne:   memberOne,
-		MemberTwo:   memberTwo,
-	}
-	if err := r.db.Create(&conv).Error; err != nil {
-		return nil, err
-	}
-	return &conv, nil
+func (r *repository) CreateConversation(conv *models.ConversationModel) error {
+	return r.db.Create(conv).Error
 }
 
 func (r *repository) FindConversation(id uuid.UUID) (*models.ConversationModel, error) {
@@ -89,13 +74,17 @@ func (r *repository) FindConversationsByUser(userID uuid.UUID, params helpers.Pa
 	var conversations []models.ConversationModel
 	var total int64
 
-	query := r.db.Model(&models.ConversationModel{}).Where("member_one = ? OR member_two = ?", userID, userID)
+	query := r.db.Model(&models.ConversationModel{}).
+		Joins("JOIN conversation_participants cp ON cp.conversation_id = conversations.id").
+		Where("cp.user_id = ?", userID)
 
 	if err := query.Count(&total).Error; err != nil {
 		return nil, err
 	}
 
-	if err := query.Order("created_at DESC").
+	if err := query.
+		Preload("Participants.User").
+		Order("conversations.created_at DESC").
 		Limit(params.Limit).
 		Offset(params.Offset()).
 		Find(&conversations).Error; err != nil {
@@ -103,6 +92,109 @@ func (r *repository) FindConversationsByUser(userID uuid.UUID, params helpers.Pa
 	}
 
 	return helpers.NewPaginatedResult(conversations, total, params), nil
+}
+
+func (r *repository) FindDMConversationsByUser(userID uuid.UUID, params helpers.PaginationParams) (*helpers.PaginatedResult[models.DMConversation], error) {
+	params.Normalize()
+
+	var conversations []models.ConversationModel
+	var total int64
+
+	query := r.db.Model(&models.ConversationModel{}).
+		Joins("JOIN conversation_participants cp ON cp.conversation_id = conversations.id").
+		Where("cp.user_id = ? AND conversations.type = ?", userID, models.ConversationTypeDM)
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, err
+	}
+
+	if err := query.
+		Order("conversations.created_at DESC").
+		Limit(params.Limit).
+		Offset(params.Offset()).
+		Find(&conversations).Error; err != nil {
+		return nil, err
+	}
+
+	// For each DM, find all other participants
+	result := make([]models.DMConversation, 0, len(conversations))
+	for _, conv := range conversations {
+		dm := models.DMConversation{
+			ConversationModel: conv,
+			OtherParticipants: []models.UsersModel{},
+		}
+
+		var otherParticipants []models.ConversationParticipantModel
+		err := r.db.Preload("User").
+			Where("conversation_id = ? AND user_id != ?", conv.ID, userID).
+			Find(&otherParticipants).Error
+		if err == nil {
+			for _, p := range otherParticipants {
+				if p.User != nil {
+					dm.OtherParticipants = append(dm.OtherParticipants, *p.User)
+				}
+			}
+		}
+
+		result = append(result, dm)
+	}
+
+	return helpers.NewPaginatedResult(result, total, params), nil
+}
+
+// FindDMConversation finds an existing DM between two users in a workspace
+func (r *repository) FindDMConversation(workspaceID, userOne, userTwo uuid.UUID) (*models.ConversationModel, error) {
+	var conv models.ConversationModel
+	err := r.db.
+		Joins("JOIN conversation_participants cp1 ON cp1.conversation_id = conversations.id AND cp1.user_id = ?", userOne).
+		Joins("JOIN conversation_participants cp2 ON cp2.conversation_id = conversations.id AND cp2.user_id = ?", userTwo).
+		Where("conversations.workspace_id = ? AND conversations.type = ?", workspaceID, models.ConversationTypeDM).
+		First(&conv).Error
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrConversationNotFound
+	}
+	return &conv, err
+}
+
+// --- Participants ---
+
+func (r *repository) AddParticipant(p *models.ConversationParticipantModel) error {
+	var existing models.ConversationParticipantModel
+	err := r.db.Where("conversation_id = ? AND user_id = ?", p.ConversationID, p.UserID).
+		First(&existing).Error
+	if err == nil {
+		return ErrAlreadyParticipant
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	p.JoinedAt = time.Now()
+	return r.db.Create(p).Error
+}
+
+func (r *repository) FindParticipant(conversationID, userID uuid.UUID) (*models.ConversationParticipantModel, error) {
+	var p models.ConversationParticipantModel
+	err := r.db.Where("conversation_id = ? AND user_id = ?", conversationID, userID).
+		First(&p).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotParticipant
+	}
+	return &p, err
+}
+
+func (r *repository) FindParticipants(conversationID uuid.UUID) ([]models.ConversationParticipantModel, error) {
+	var participants []models.ConversationParticipantModel
+	err := r.db.Preload("User").
+		Where("conversation_id = ?", conversationID).
+		Order("joined_at ASC").
+		Find(&participants).Error
+	return participants, err
+}
+
+func (r *repository) RemoveParticipant(conversationID, userID uuid.UUID) error {
+	return r.db.Where("conversation_id = ? AND user_id = ?", conversationID, userID).
+		Delete(&models.ConversationParticipantModel{}).Error
 }
 
 // --- Messages ---
@@ -117,7 +209,6 @@ func (r *repository) FindMessages(conversationID uuid.UUID, params helpers.Pagin
 	var messages []models.ChatMessageModel
 	var total int64
 
-	// Only top-level messages (no parent) — replies fetched separately
 	query := r.db.Model(&models.ChatMessageModel{}).
 		Where("conversation_id = ? AND parent_id IS NULL AND deleted_at IS NULL", conversationID)
 
@@ -129,6 +220,7 @@ func (r *repository) FindMessages(conversationID uuid.UUID, params helpers.Pagin
 		Preload("Sender").
 		Preload("Reactions.User").
 		Preload("Replies.Sender").
+		Preload("Replies.Reactions.User").
 		Order("created_at ASC").
 		Limit(params.Limit).
 		Offset(params.Offset()).
@@ -175,12 +267,8 @@ func (r *repository) SoftDeleteMessage(id uuid.UUID) error {
 // --- Reactions ---
 
 func (r *repository) AddReaction(reaction *models.MessageReactionModel) error {
-	result := r.db.Create(reaction)
-	if result.Error != nil {
-		if result.Error.Error() != "" {
-			return ErrAlreadyReacted
-		}
-		return result.Error
+	if err := r.db.Create(reaction).Error; err != nil {
+		return ErrAlreadyReacted
 	}
 	return nil
 }

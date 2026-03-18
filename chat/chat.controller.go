@@ -15,9 +15,21 @@ import (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true // tighten in production
-	},
+	// CheckOrigin validates the request origin against ALLOWED_ORIGINS env var.
+	// In development with ALLOWED_ORIGINS unset, all origins are allowed.
+	// CheckOrigin: func(r *http.Request) bool {
+	// 	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
+	// 	if allowedOrigins == "" {
+	// 		return true
+	// 	}
+	// 	origin := r.Header.Get("Origin")
+	// 	for _, allowed := range strings.Split(allowedOrigins, ",") {
+	// 		if strings.TrimSpace(allowed) == origin {
+	// 			return true
+	// 		}
+	// 	}
+	// 	return false
+	// },
 }
 
 type Handler struct {
@@ -84,6 +96,56 @@ func (h *Handler) GetConversations(c *gin.Context) {
 }
 
 // --- Messages ---
+
+func (h *Handler) GetDMConversations(c *gin.Context) {
+	userID, ok := helpers.GetUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var params helpers.PaginationParams
+	if err := c.ShouldBindQuery(&params); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	params.Normalize()
+
+	result, err := h.svc.GetDMConversations(userID, params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch DM conversations"})
+		return
+	}
+
+	audit.SetAction(c, "chat.dm_conversations_listed")
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) GetParticipants(c *gin.Context) {
+	userID, ok := helpers.GetUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	conversationID, err := uuid.Parse(c.Param("conversationId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid conversationId"})
+		return
+	}
+
+	participants, err := h.svc.GetParticipants(userID, conversationID)
+	if err != nil {
+		if errors.Is(err, ErrNotParticipant) {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch participants"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": participants})
+}
 
 func (h *Handler) GetMessages(c *gin.Context) {
 	userID, ok := helpers.GetUserID(c)
